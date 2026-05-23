@@ -10,11 +10,17 @@ function App() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [input, setInput] = useState('');
   const [presenterView, setPresenterView] = useState(false);
+  const [submissionOpen, setSubmissionOpen] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [max, setMax] = useState(10);
 
   const fetchQuestions = useCallback(async () => {
     const res = await fetch('/api/questions');
-    const data: Question[] = await res.json();
-    setQuestions(data);
+    const data = await res.json();
+    setQuestions(data.questions);
+    setSubmissionOpen(data.submissionOpen);
+    setTotal(data.total);
+    setMax(data.max);
   }, []);
 
   useEffect(() => {
@@ -27,21 +33,29 @@ function App() {
     e.preventDefault();
     const trimmed = input.trim();
     if (!trimmed) return;
-    await fetch('/api/questions', {
+    const res = await fetch('/api/questions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: trimmed }),
     });
-    setInput('');
-    fetchQuestions();
+    if (res.ok) {
+      setInput('');
+      const data = await res.json();
+      setQuestions(data.questions);
+      setSubmissionOpen(data.submissionOpen);
+      setTotal(data.total);
+    }
   };
 
   const handleUpvote = async (id: number) => {
-    await fetch(`/api/questions/${id}/upvote`, { method: 'POST' });
-    fetchQuestions();
+    const res = await fetch(`/api/questions/${id}/upvote`, { method: 'POST' });
+    const data = await res.json();
+    setQuestions(data.questions);
+    setSubmissionOpen(data.submissionOpen);
+    setTotal(data.total);
   };
 
-  const top3 = questions.slice(0, 3);
+  const maxVotes = Math.max(...questions.map((q) => q.votes), 1);
 
   return (
     <div className="min-h-screen bg-slate-950 px-4 py-6">
@@ -62,53 +76,70 @@ function App() {
       </header>
 
       {presenterView ? (
-        /* ---------- PRESENTER VIEW ---------- */
-        <div className="mx-auto flex max-w-4xl flex-col items-center justify-center gap-10 pt-20">
-          {top3.length === 0 ? (
-            <p className="text-4xl font-light text-slate-500">
-              No questions yet…
+        <div className="mx-auto flex max-w-4xl flex-col items-center justify-center gap-8 pt-16">
+          {questions.length === 0 ? (
+            <p className="text-3xl font-light text-slate-500">
+              Awaiting opinions…
             </p>
           ) : (
-            top3.map((q) => (
-              <div
-                key={q.id}
-                className="w-full rounded-2xl bg-slate-800/60 p-10 text-center"
-              >
-                <p className="text-5xl font-extrabold leading-tight text-white">
-                  {q.text}
-                </p>
-                <span className="mt-6 inline-flex items-center gap-2 rounded-full bg-blue-600/30 px-6 py-2 text-2xl font-semibold text-blue-300">
-                  &#9650; {q.votes}
-                </span>
-              </div>
-            ))
+            questions.map((q) => {
+              const scale = q.votes / maxVotes;
+              const size = 1.25 + scale * 3.5;
+              const opacity = 0.4 + scale * 0.6;
+              const weight = 400 + Math.round(scale * 500);
+              return (
+                <div
+                  key={q.id}
+                  className="w-full rounded-2xl bg-slate-800/40 p-8 text-center transition-all duration-500"
+                >
+                  <p
+                    className="leading-tight text-white transition-all duration-500"
+                    style={{
+                      fontSize: `${size}rem`,
+                      fontWeight: weight,
+                      opacity,
+                    }}
+                  >
+                    {q.text}
+                  </p>
+                  <span className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-blue-600/20 px-4 py-1.5 text-lg font-semibold text-blue-300">
+                    &#9650; {q.votes}
+                  </span>
+                </div>
+              );
+            })
           )}
         </div>
       ) : (
-        /* ---------- NORMAL VIEW ---------- */
         <div className="mx-auto max-w-2xl">
-          {/* Input form */}
-          <form onSubmit={handleSubmit} className="mb-8 flex gap-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Submit your question or response anonymously..."
-              className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white placeholder-slate-400 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/40"
-            />
-            <button
-              type="submit"
-              disabled={!input.trim()}
-              className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Submit
-            </button>
-          </form>
-
-          {/* Question list */}
+          {submissionOpen ? (
+            <form onSubmit={handleSubmit} className="mb-6 flex gap-3">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Submit your opinion anonymously…"
+                className="flex-1 rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 text-white placeholder-slate-400 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/40"
+              />
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                className="rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Submit
+              </button>
+            </form>
+          ) : (
+            <p className="mb-6 rounded-xl border border-green-700 bg-green-900/30 px-5 py-4 text-center text-lg font-semibold text-green-300">
+              Voting is now open! &#x1F5F3;&#xFE0F;
+            </p>
+          )}
+          <p className="mb-4 text-center text-sm text-slate-500">
+            {total} / {max} opinions submitted
+          </p>
           {questions.length === 0 ? (
             <p className="text-center text-slate-500">
-              No questions yet. Be the first to submit!
+              No opinions yet. Be the first to submit!
             </p>
           ) : (
             <ul className="space-y-3">
